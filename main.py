@@ -1,6 +1,7 @@
 import asyncio
 import sqlite3
 import os
+import re
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -48,14 +49,6 @@ def get_main_keyboard():
     ])
     return keyboard
 
-# Клавиатура для удаления (динамическая)
-def get_delete_keyboard(wish_id, wish_type):
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_{wish_type}_{wish_id}")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_{wish_type}")]
-    ])
-    return keyboard
-
 # Команда /start
 @dp.message(Command("start"))
 async def start_command(message: types.Message):
@@ -66,7 +59,7 @@ async def start_command(message: types.Message):
         "• /kot — показать хотелки Кота\n"
         "• /sun — показать хотелки Солнце\n"
         "• /add — добавить хотелку\n"
-        "• /del — режим удаления (нажми на любую хотелку)\n"
+        "• /del — удалить хотелку (перешли сообщение с ссылкой или напиши /del [ссылка])\n"
         "• /help — помощь\n\n"
         "💡 Просто кидай ссылки в чат, и они автоматически добавятся в твой список!",
         reply_markup=get_main_keyboard()
@@ -83,10 +76,9 @@ async def help_command(message: types.Message):
         "🔹 Посмотреть списки:\n"
         "   • /kot — хотелки Кота\n"
         "   • /sun — хотелки Солнце\n\n"
-        "🔹 Удалить хотелку:\n"
-        "   • /del — войти в режим удаления\n"
-        "   • Нажми на кнопку с номером хотелки, которую хочешь удалить\n"
-        "   • Подтверди удаление\n\n"
+        "🔹 Удалить хотелку (2 способа):\n"
+        "   • Перешли сообщение с ссылкой в чат и напиши /del\n"
+        "   • Или просто напиши: /del https://ozon.ru/t/ссылка\n\n"
         "🔹 Кнопки:\n"
         "   • После /start появляется меню с кнопками\n\n"
         "❓ Вопросы? Просто напиши!"
@@ -100,45 +92,58 @@ async def add_command(message: types.Message):
         "Можно добавить комментарий после ссылки."
     )
 
-# Команда /del (режим удаления)
+# Команда /del (удаление)
 @dp.message(Command("del"))
-async def delete_mode(message: types.Message):
+async def delete_command(message: types.Message):
     user_id = message.from_user.id
     
+    # Проверяем, есть ли ссылка в тексте команды
+    text = message.text
+    link_match = re.search(r'(https?://[^\s]+)', text)
+    
+    if link_match:
+        # Способ 1: ссылка прямо в команде /del https://...
+        link = link_match.group(1)
+        await delete_wish_by_link(user_id, link, message)
+    else:
+        # Способ 2: ждем пересланное сообщение
+        await message.answer(
+            "🗑 Режим удаления\n\n"
+            "Перешли сообщение с ссылкой, которую хочешь удалить.\n"
+            "Или напиши /del [ссылка]"
+        )
+        # Сохраняем состояние ожидания пересылки
+        # Для простоты, следующий пересланный ответ будет обработан в handle_message
+
+# Функция удаления по ссылке
+async def delete_wish_by_link(user_id, link, message):
     conn = sqlite3.connect('wishes.db')
     cur = conn.cursor()
+    
+    # Ищем хотелку с такой ссылкой у этого пользователя
     cur.execute(
-        "SELECT id, link, comment FROM wishes WHERE user_id = ? ORDER BY date DESC",
-        (user_id,)
+        "SELECT id, link, comment FROM wishes WHERE user_id = ? AND link = ?",
+        (user_id, link)
     )
-    wishes = cur.fetchall()
-    conn.close()
+    wish = cur.fetchone()
     
-    if not wishes:
-        await message.answer("🐱 У тебя пока нет хотелок для удаления.")
-        return
-    
-    # Создаем клавиатуру с кнопками для каждой хотелки
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
-    for wish_id, link, comment in wishes:
-        # Обрезаем ссылку для отображения
-        short_link = link[:40] + "..." if len(link) > 40 else link
-        button_text = f"🗑 {short_link}"
-        if comment:
-            button_text += f" ({comment[:30]})"
+    if wish:
+        cur.execute("DELETE FROM wishes WHERE id = ?", (wish[0],))
+        conn.commit()
         
-        keyboard.inline_keyboard.append(
-            [InlineKeyboardButton(text=button_text, callback_data=f"select_delete_{wish_id}")]
-        )
+        # Определяем имя пользователя для ответа
+        if user_id == MY_ID:
+            name = "Кота 🐱"
+        elif user_id == HER_ID:
+            name = "Солнце 💖"
+        else:
+            name = "пользователя"
+        
+        await message.answer(f"✅ Удалено из хотелок {name}!")
+    else:
+        await message.answer("❌ Не найдена такая хотелка. Проверь ссылку.")
     
-    # Добавляем кнопку отмены
-    keyboard.inline_keyboard.append([InlineKeyboardButton(text="🔙 Отмена", callback_data="cancel_delete")])
-    
-    await message.answer(
-        "🗑 Режим удаления\n\n"
-        "Нажми на хотелку, которую хочешь удалить:",
-        reply_markup=keyboard
-    )
+    conn.close()
 
 # Команда /kot
 @dp.message(Command("kot"))
@@ -158,19 +163,21 @@ async def show_my_wishes(message: types.Message):
         await message.answer("🐱 Пока нет хотелок. Отправь ссылку в чат, чтобы добавить!")
         return
     
-    # Отправляем каждую хотелку отдельным сообщением с кнопкой удаления
-    for wish_id, link, comment, date in wishes:
-        text = f"🐱 *Хотелка Кота:*\n\n"
-        text += f"[Ссылка]({link})"
+    text = "🐱 *Твои хотелки:*\n\n"
+    for i, (wish_id, link, comment, date) in enumerate(wishes, 1):
+        text += f"{i}. [Ссылка]({link})"
         if comment:
-            text += f"\n📝 *Комментарий:* _{comment}_"
-        text += f"\n📅 *Добавлено:* `{date}`"
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_kot_{wish_id}")]
+            text += f" — _{comment}_"
+        text += f"\n   🗑 Чтобы удалить: `/del {link}`\n\n"
+    
+    await message.answer(
+        text, 
+        parse_mode="Markdown", 
+        disable_web_page_preview=True,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🗑 Режим удаления", callback_data="delete_mode")]
         ])
-        
-        await message.answer(text, parse_mode="Markdown", disable_web_page_preview=True, reply_markup=keyboard)
+    )
 
 # Команда /sun
 @dp.message(Command("sun"))
@@ -188,107 +195,21 @@ async def show_her_wishes(message: types.Message):
         await message.answer("💖 У Солнце пока нет хотелок.")
         return
     
-    for wish_id, link, comment, date in wishes:
-        text = f"💖 *Хотелка Солнце:*\n\n"
-        text += f"[Ссылка]({link})"
+    text = "💖 *Хотелки Солнце:*\n\n"
+    for i, (wish_id, link, comment, date) in enumerate(wishes, 1):
+        text += f"{i}. [Ссылка]({link})"
         if comment:
-            text += f"\n📝 *Комментарий:* _{comment}_"
-        text += f"\n📅 *Добавлено:* `{date}`"
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_sun_{wish_id}")]
-        ])
-        
-        await message.answer(text, parse_mode="Markdown", disable_web_page_preview=True, reply_markup=keyboard)
+            text += f" — _{comment}_"
+        text += f"\n   🗑 Чтобы удалить: `/del {link}`\n\n"
+    
+    await message.answer(text, parse_mode="Markdown", disable_web_page_preview=True)
 
 # Обработка inline-кнопок
 @dp.callback_query()
 async def handle_callback(callback: types.CallbackQuery):
     data = callback.data
     
-    # Обработка удаления из /kot
-    if data.startswith("delete_kot_"):
-        wish_id = int(data.split("_")[2])
-        user_id = callback.from_user.id
-        
-        # Проверяем, что хотелка принадлежит пользователю
-        conn = sqlite3.connect('wishes.db')
-        cur = conn.cursor()
-        cur.execute("SELECT user_id FROM wishes WHERE id = ?", (wish_id,))
-        result = cur.fetchone()
-        
-        if result and result[0] == user_id:
-            cur.execute("DELETE FROM wishes WHERE id = ?", (wish_id,))
-            conn.commit()
-            await callback.message.edit_text("✅ Хотелка удалена!")
-        else:
-            await callback.answer("❌ Нельзя удалить чужую хотелку!", show_alert=True)
-        
-        conn.close()
-        await callback.answer()
-    
-    # Обработка удаления из /sun
-    elif data.startswith("delete_sun_"):
-        wish_id = int(data.split("_")[2])
-        user_id = callback.from_user.id
-        
-        conn = sqlite3.connect('wishes.db')
-        cur = conn.cursor()
-        cur.execute("DELETE FROM wishes WHERE id = ?", (wish_id,))
-        conn.commit()
-        conn.close()
-        
-        await callback.message.edit_text("✅ Хотелка удалена!")
-        await callback.answer()
-    
-    # Обработка выбора хотелки для удаления (из режима /del)
-    elif data.startswith("select_delete_"):
-        wish_id = int(data.split("_")[2])
-        
-        # Запрашиваем подтверждение
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_delete_{wish_id}")],
-            [InlineKeyboardButton(text="🔙 Нет, отмена", callback_data="cancel_delete")]
-        ])
-        
-        await callback.message.edit_text(
-            f"⚠️ *Подтверждение удаления*\n\n"
-            f"Вы уверены, что хотите удалить эту хотелку?\n"
-            f"Это действие нельзя отменить.",
-            parse_mode="Markdown",
-            reply_markup=keyboard
-        )
-        await callback.answer()
-    
-    # Подтверждение удаления
-    elif data.startswith("confirm_delete_"):
-        wish_id = int(data.split("_")[2])
-        user_id = callback.from_user.id
-        
-        conn = sqlite3.connect('wishes.db')
-        cur = conn.cursor()
-        
-        # Проверяем, что хотелка принадлежит пользователю
-        cur.execute("SELECT user_id FROM wishes WHERE id = ?", (wish_id,))
-        result = cur.fetchone()
-        
-        if result and result[0] == user_id:
-            cur.execute("DELETE FROM wishes WHERE id = ?", (wish_id,))
-            conn.commit()
-            await callback.message.edit_text("✅ Хотелка успешно удалена!")
-        else:
-            await callback.message.edit_text("❌ Ошибка: хотелка не найдена или принадлежит другому пользователю.")
-        
-        conn.close()
-        await callback.answer()
-    
-    # Отмена удаления
-    elif data == "cancel_delete":
-        await callback.message.edit_text("🔙 Удаление отменено.")
-        await callback.answer()
-    
-    # Обработка кнопок главного меню
-    elif data == "show_kot":
+    if data == "show_kot":
         user_id = callback.from_user.id
         conn = sqlite3.connect('wishes.db')
         cur = conn.cursor()
@@ -302,15 +223,14 @@ async def handle_callback(callback: types.CallbackQuery):
         if not wishes:
             await callback.message.answer("🐱 Пока нет хотелок.")
         else:
-            for wish_id, link, comment in wishes:
-                text = f"🐱 *Хотелка Кота:*\n\n[Ссылка]({link})"
+            text = "🐱 *Твои хотелки:*\n\n"
+            for i, (wish_id, link, comment) in enumerate(wishes, 1):
+                text += f"{i}. [Ссылка]({link})"
                 if comment:
-                    text += f"\n📝 *Комментарий:* _{comment}_"
-                
-                keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_kot_{wish_id}")]
-                ])
-                await callback.message.answer(text, parse_mode="Markdown", disable_web_page_preview=True, reply_markup=keyboard)
+                    text += f" — _{comment}_"
+                text += f"\n   🗑 Чтобы удалить: `/del {link}`\n\n"
+            
+            await callback.message.answer(text, parse_mode="Markdown", disable_web_page_preview=True)
         
         await callback.answer()
     
@@ -327,32 +247,60 @@ async def handle_callback(callback: types.CallbackQuery):
         if not wishes:
             await callback.message.answer("💖 У Солнце пока нет хотелок.")
         else:
-            for wish_id, link, comment in wishes:
-                text = f"💖 *Хотелка Солнце:*\n\n[Ссылка]({link})"
+            text = "💖 *Хотелки Солнце:*\n\n"
+            for i, (wish_id, link, comment) in enumerate(wishes, 1):
+                text += f"{i}. [Ссылка]({link})"
                 if comment:
-                    text += f"\n📝 *Комментарий:* _{comment}_"
-                
-                keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_sun_{wish_id}")]
-                ])
-                await callback.message.answer(text, parse_mode="Markdown", disable_web_page_preview=True, reply_markup=keyboard)
+                    text += f" — _{comment}_"
+                text += f"\n   🗑 Чтобы удалить: `/del {link}`\n\n"
+            
+            await callback.message.answer(text, parse_mode="Markdown", disable_web_page_preview=True)
         
+        await callback.answer()
+    
+    elif data == "delete_mode":
+        await callback.message.answer(
+            "🗑 Режим удаления\n\n"
+            "**Способ 1:** Перешли сообщение с ссылкой и напиши `/del`\n"
+            "**Способ 2:** Напиши `/del https://ozon.ru/t/ссылка`\n\n"
+            "Пример: `/del https://ozon.ru/t/12345678`",
+            parse_mode="Markdown"
+        )
         await callback.answer()
     
     elif data == "add_wish":
         await callback.message.answer("📎 Отправь ссылку на товар в этот чат!")
         await callback.answer()
 
-# Автоматическое сохранение ссылок из сообщений
+# Обработка обычных сообщений (сохранение ссылок + удаление через пересылку)
 @dp.message()
 async def handle_message(message: types.Message):
+    user_id = message.from_user.id
+    
+    # Проверка на удаление через пересылку
+    if message.reply_to_message and message.text and "/del" in message.text:
+        # Пользователь ответил на сообщение с /del
+        original_msg = message.reply_to_message
+        
+        # Ищем ссылку в оригинальном сообщении
+        if original_msg.text and "http" in original_msg.text:
+            link_match = re.search(r'(https?://[^\s]+)', original_msg.text)
+            if link_match:
+                link = link_match.group(1)
+                await delete_wish_by_link(user_id, link, message)
+                return
+    
+    # Обычное сохранение ссылок
     if not message.text:
         return
         
     text = message.text
     
+    # Если команда /del уже обработана выше, пропускаем
+    if text.startswith("/del"):
+        return
+    
     if "http" in text or "ozon" in text.lower() or "wildberries" in text.lower() or "wb" in text.lower():
-        user_id = message.from_user.id
         username = message.from_user.full_name
         
         words = text.split()
@@ -371,21 +319,33 @@ async def handle_message(message: types.Message):
             
             conn = sqlite3.connect('wishes.db')
             cur = conn.cursor()
+            
+            # Проверяем, нет ли уже такой ссылки у пользователя
             cur.execute(
-                "INSERT INTO wishes (user_id, username, link, comment, date) VALUES (?, ?, ?, ?, ?)",
-                (user_id, username, link, comment_text, date)
+                "SELECT id FROM wishes WHERE user_id = ? AND link = ?",
+                (user_id, link)
             )
-            conn.commit()
-            conn.close()
+            existing = cur.fetchone()
             
-            if user_id == MY_ID:
-                owner = "🐱 в хотелки Кота"
-            elif user_id == HER_ID:
-                owner = "💖 в хотелки Солнце"
+            if existing:
+                await message.reply("⚠️ Эта ссылка уже есть в твоих хотелках!")
             else:
-                owner = "в хотелки"
+                cur.execute(
+                    "INSERT INTO wishes (user_id, username, link, comment, date) VALUES (?, ?, ?, ?, ?)",
+                    (user_id, username, link, comment_text, date)
+                )
+                conn.commit()
+                
+                if user_id == MY_ID:
+                    owner = "🐱 в хотелки Кота"
+                elif user_id == HER_ID:
+                    owner = "💖 в хотелки Солнце"
+                else:
+                    owner = "в хотелки"
+                
+                await message.reply(f"✅ Добавлено {owner}!")
             
-            await message.reply(f"✅ Добавлено {owner}!")
+            conn.close()
 
 # Автоматический пинг
 async def keep_alive():
