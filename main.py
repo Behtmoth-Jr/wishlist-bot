@@ -262,8 +262,8 @@ async def handle_callback(callback: types.CallbackQuery):
         await callback.message.answer(
             "🗑 Режим удаления\n\n"
             "**Способ 1:** Перешли сообщение с ссылкой и напиши `/del`\n"
-            "**Способ 2:** Напиши `/del https://ozon.ru/t/ссылка`\n\n"
-            "Пример: `/del https://ozon.ru/t/12345678`",
+            "**Способ 2:** Напиши `/del [ссылка]`\n\n"
+            "Пример: `/del [ссылка]`",
             parse_mode="Markdown"
         )
         await callback.answer()
