@@ -42,7 +42,7 @@ init_db()
 # Клавиатура главного меню
 def get_main_keyboard():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🐱 Мои хотелки (Кот)", callback_data="show_kot")],
+        [InlineKeyboardButton(text="🐱 хотелки Кота", callback_data="show_kot")],
         [InlineKeyboardButton(text="💖 Хотелки Солнце", callback_data="show_sun")],
         [InlineKeyboardButton(text="➕ Добавить хотелку", callback_data="add_wish")]
     ])
@@ -55,7 +55,7 @@ async def start_command(message: types.Message):
         "🐱💖 Привет! Это бот для совместных хотелок!\n\n"
         "📌 Что умею:\n"
         "• Отправь ссылку на Ozon/WB в чат — я сохраню её\n"
-        "• /kot — показать твои хотелки\n"
+        "• /kot — показать Кота хотелки\n"
         "• /sun — показать хотелки Солнце\n"
         "• /add — добавить хотелку\n"
         "• /help — помощь\n\n"
@@ -87,7 +87,7 @@ async def add_command(message: types.Message):
         "Можно добавить комментарий после ссылки."
     )
 
-# Команда /kot (мои хотелки)
+# Команда /kot хотелки
 @dp.message(Command("kot"))
 async def show_my_wishes(message: types.Message):
     user_id = message.from_user.id
