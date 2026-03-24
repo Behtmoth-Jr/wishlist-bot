@@ -72,7 +72,7 @@ async def help_command(message: types.Message):
         "   • Просто отправь ссылку на товар (Ozon, Wildberries) в чат\n"
         "   • Или используй команду /add и затем ссылку\n\n"
         "🔹 Посмотреть списки:\n"
-        "   • /kot — твои хотелки\n"
+        "   • /kot — кота хотелки\n"
         "   • /sun — хотелки Солнце\n\n"
         "🔹 Кнопки:\n"
         "   • После /start появляется меню с кнопками\n\n"
@@ -102,10 +102,10 @@ async def show_my_wishes(message: types.Message):
     conn.close()
     
     if not wishes:
-        await message.answer("🐱 У тебя пока нет хотелок. Отправь ссылку в чат, чтобы добавить!")
+        await message.answer("🐱 пока нет хотелок. Отправь ссылку в чат, чтобы добавить!")
         return
     
-    text = "🐱 *Твои хотелки:*\n\n"
+    text = "🐱 *Кота хотелки:*\n\n"
     for i, (link, comment, date) in enumerate(wishes, 1):
         text += f"{i}. [Ссылка]({link})"
         if comment:
@@ -156,9 +156,9 @@ async def handle_callback(callback: types.CallbackQuery):
         conn.close()
         
         if not wishes:
-            await callback.message.answer("🐱 У тебя пока нет хотелок.")
+            await callback.message.answer("🐱 пока нет хотелок.")
         else:
-            text = "🐱 *Твои хотелки:*\n\n"
+            text = "🐱 *кота хотелки:*\n\n"
             for i, (link, comment) in enumerate(wishes, 1):
                 text += f"{i}. [Ссылка]({link})"
                 if comment:
@@ -231,7 +231,7 @@ async def handle_message(message: types.Message):
             conn.close()
             
             if user_id == MY_ID:
-                owner = "🐱 в твои хотелки"
+                owner = "🐱 в хотелки Кота"
             elif user_id == HER_ID:
                 owner = "💖 в хотелки Солнце"
             else:
