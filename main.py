@@ -59,7 +59,7 @@ async def start_command(message: types.Message):
         "• /kot — показать хотелки Кота\n"
         "• /sun — показать хотелки Солнце\n"
         "• /add — добавить хотелку\n"
-        "• /del — удалить хотелку (перешли сообщение с ссылкой или напиши /del [ссылка])\n"
+        "• /del — удалить хотелку\n"
         "• /help — помощь\n\n"
         "💡 Просто кидай ссылки в чат, и они автоматически добавятся в твой список!",
         reply_markup=get_main_keyboard()
@@ -77,8 +77,8 @@ async def help_command(message: types.Message):
         "   • /kot — хотелки Кота\n"
         "   • /sun — хотелки Солнце\n\n"
         "🔹 Удалить хотелку (2 способа):\n"
-        "   • Перешли сообщение с ссылкой в чат и напиши /del\n"
-        "   • Или просто напиши: /del [ссылка]]n\n"
+        "   • Перешли сообщение с ссылкой и напиши /del\n"
+        "   • Или напиши: /del (ссылка)\n\n"
         "🔹 Кнопки:\n"
         "   • После /start появляется меню с кнопками\n\n"
         "❓ Вопросы? Просто напиши!"
@@ -110,10 +110,8 @@ async def delete_command(message: types.Message):
         await message.answer(
             "🗑 Режим удаления\n\n"
             "Перешли сообщение с ссылкой, которую хочешь удалить.\n"
-            "Или напиши /del [ссылка]"
+            "Или напиши /del (ссылка)"
         )
-        # Сохраняем состояние ожидания пересылки
-        # Для простоты, следующий пересланный ответ будет обработан в handle_message
 
 # Функция удаления по ссылке
 async def delete_wish_by_link(user_id, link, message):
@@ -173,10 +171,7 @@ async def show_my_wishes(message: types.Message):
     await message.answer(
         text, 
         parse_mode="Markdown", 
-        disable_web_page_preview=True,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🗑 Режим удаления", callback_data="delete_mode")]
-        ])
+        disable_web_page_preview=True
     )
 
 # Команда /sun
@@ -258,16 +253,6 @@ async def handle_callback(callback: types.CallbackQuery):
         
         await callback.answer()
     
-    elif data == "delete_mode":
-        await callback.message.answer(
-            "🗑 Режим удаления\n\n"
-            "**Способ 1:** Перешли сообщение с ссылкой и напиши `/del`\n"
-            "**Способ 2:** Напиши `/del [ссылка]`\n\n"
-            "Пример: `/del [ссылка]`",
-            parse_mode="Markdown"
-        )
-        await callback.answer()
-    
     elif data == "add_wish":
         await callback.message.answer("📎 Отправь ссылку на товар в этот чат!")
         await callback.answer()
@@ -279,7 +264,6 @@ async def handle_message(message: types.Message):
     
     # Проверка на удаление через пересылку
     if message.reply_to_message and message.text and "/del" in message.text:
-        # Пользователь ответил на сообщение с /del
         original_msg = message.reply_to_message
         
         # Ищем ссылку в оригинальном сообщении
