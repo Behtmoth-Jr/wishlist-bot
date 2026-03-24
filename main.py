@@ -198,7 +198,10 @@ async def handle_callback(callback: types.CallbackQuery):
 # Автоматическое сохранение ссылок из сообщений
 @dp.message()
 async def handle_message(message: types.Message):
-    text = message.text or message.caption or ""
+    if not message.text:
+        return
+        
+    text = message.text
     
     if "http" in text or "ozon" in text.lower() or "wildberries" in text.lower() or "wb" in text.lower():
         user_id = message.from_user.id
@@ -235,8 +238,6 @@ async def handle_message(message: types.Message):
                 owner = "в хотелки"
             
             await message.reply(f"✅ Добавлено {owner}!")
-        else:
-            await message.reply("🔗 Отправь ссылку на товар (Ozon или Wildberries)")
 
 # Автоматический пинг
 async def keep_alive():
