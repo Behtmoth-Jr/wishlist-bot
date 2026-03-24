@@ -7,6 +7,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 import logging
+from aiohttp import web
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -43,7 +44,7 @@ init_db()
 # Клавиатура главного меню
 def get_main_keyboard():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🐱 хотелки Кота", callback_data="show_kot")],
+        [InlineKeyboardButton(text="🐱 Хотелки Кота", callback_data="show_kot")],
         [InlineKeyboardButton(text="💖 Хотелки Солнце", callback_data="show_sun")],
         [InlineKeyboardButton(text="➕ Добавить хотелку", callback_data="add_wish")]
     ])
@@ -61,7 +62,7 @@ async def start_command(message: types.Message):
         "• /add — добавить хотелку\n"
         "• /del — удалить хотелку\n"
         "• /help — помощь\n\n"
-        "💡 Просто кидай ссылки в чат, и они автоматически добавятся в твой список!",
+        "💡 Просто кидай ссылки в чат, и они автоматически добавятся в список!",
         reply_markup=get_main_keyboard()
     )
 
@@ -71,14 +72,14 @@ async def help_command(message: types.Message):
     await message.answer(
         "📖 Помощь по использованию:\n\n"
         "🔹 Добавить хотелку:\n"
-        "   • Просто отправь ссылку на товар (Ozon, Wildberries) в чат\n"
+        "   • Отправь ссылку на товар (Ozon, Wildberries) в чат\n"
         "   • Или используй команду /add и затем ссылку\n\n"
         "🔹 Посмотреть списки:\n"
         "   • /kot — хотелки Кота\n"
         "   • /sun — хотелки Солнце\n\n"
-        "🔹 Удалить хотелку (2 способа):\n"
+        "🔹 Удалить хотелку:\n"
         "   • Перешли сообщение с ссылкой и напиши /del\n"
-        "   • Или напиши: /del (ссылка)\n\n"
+        "   • Или напиши /del и ссылку через пробел\n\n"
         "🔹 Кнопки:\n"
         "   • После /start появляется меню с кнопками\n\n"
         "❓ Вопросы? Просто напиши!"
@@ -92,35 +93,28 @@ async def add_command(message: types.Message):
         "Можно добавить комментарий после ссылки."
     )
 
-# Команда /del (удаление)
+# Команда /del
 @dp.message(Command("del"))
 async def delete_command(message: types.Message):
     user_id = message.from_user.id
-    
-    # Проверяем, есть ли ссылка в тексте команды
     text = message.text
     link_match = re.search(r'(https?://[^\s]+)', text)
     
     if link_match:
-        # Способ 1: ссылка прямо в команде /del https://...
         link = link_match.group(1)
         await delete_wish_by_link(user_id, link, message)
     else:
-        # Способ 2: ждем пересланное сообщение
         await message.answer(
             "🗑 Режим удаления\n\n"
             "Перешли сообщение с ссылкой, которую хочешь удалить.\n"
-            "Или напиши /del (ссылка)"
+            "Или напиши /del и ссылку через пробел."
         )
 
-# Функция удаления по ссылке
 async def delete_wish_by_link(user_id, link, message):
     conn = sqlite3.connect('wishes.db')
     cur = conn.cursor()
-    
-    # Ищем хотелку с такой ссылкой у этого пользователя
     cur.execute(
-        "SELECT id, link, comment FROM wishes WHERE user_id = ? AND link = ?",
+        "SELECT id FROM wishes WHERE user_id = ? AND link = ?",
         (user_id, link)
     )
     wish = cur.fetchone()
@@ -129,7 +123,6 @@ async def delete_wish_by_link(user_id, link, message):
         cur.execute("DELETE FROM wishes WHERE id = ?", (wish[0],))
         conn.commit()
         
-        # Определяем имя пользователя для ответа
         if user_id == MY_ID:
             name = "Кота 🐱"
         elif user_id == HER_ID:
@@ -151,7 +144,7 @@ async def show_my_wishes(message: types.Message):
     conn = sqlite3.connect('wishes.db')
     cur = conn.cursor()
     cur.execute(
-        "SELECT id, link, comment, date FROM wishes WHERE user_id = ? ORDER BY date DESC",
+        "SELECT link, comment, date FROM wishes WHERE user_id = ? ORDER BY date DESC",
         (user_id,)
     )
     wishes = cur.fetchall()
@@ -161,18 +154,14 @@ async def show_my_wishes(message: types.Message):
         await message.answer("🐱 Пока нет хотелок. Отправь ссылку в чат, чтобы добавить!")
         return
     
-    text = "🐱 *Твои хотелки:*\n\n"
-    for i, (wish_id, link, comment, date) in enumerate(wishes, 1):
+    text = "🐱 *Хотелки Кота:*\n\n"
+    for i, (link, comment, date) in enumerate(wishes, 1):
         text += f"{i}. [Ссылка]({link})"
         if comment:
             text += f" — _{comment}_"
         text += f"\n   🗑 Чтобы удалить: `/del {link}`\n\n"
     
-    await message.answer(
-        text, 
-        parse_mode="Markdown", 
-        disable_web_page_preview=True
-    )
+    await message.answer(text, parse_mode="Markdown", disable_web_page_preview=True)
 
 # Команда /sun
 @dp.message(Command("sun"))
@@ -180,7 +169,7 @@ async def show_her_wishes(message: types.Message):
     conn = sqlite3.connect('wishes.db')
     cur = conn.cursor()
     cur.execute(
-        "SELECT id, link, comment, date FROM wishes WHERE user_id = ? ORDER BY date DESC",
+        "SELECT link, comment, date FROM wishes WHERE user_id = ? ORDER BY date DESC",
         (HER_ID,)
     )
     wishes = cur.fetchall()
@@ -191,7 +180,7 @@ async def show_her_wishes(message: types.Message):
         return
     
     text = "💖 *Хотелки Солнце:*\n\n"
-    for i, (wish_id, link, comment, date) in enumerate(wishes, 1):
+    for i, (link, comment, date) in enumerate(wishes, 1):
         text += f"{i}. [Ссылка]({link})"
         if comment:
             text += f" — _{comment}_"
@@ -209,7 +198,7 @@ async def handle_callback(callback: types.CallbackQuery):
         conn = sqlite3.connect('wishes.db')
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, link, comment FROM wishes WHERE user_id = ? ORDER BY date DESC",
+            "SELECT link, comment FROM wishes WHERE user_id = ? ORDER BY date DESC",
             (user_id,)
         )
         wishes = cur.fetchall()
@@ -218,8 +207,8 @@ async def handle_callback(callback: types.CallbackQuery):
         if not wishes:
             await callback.message.answer("🐱 Пока нет хотелок.")
         else:
-            text = "🐱 *Твои хотелки:*\n\n"
-            for i, (wish_id, link, comment) in enumerate(wishes, 1):
+            text = "🐱 *Хотелки Кота:*\n\n"
+            for i, (link, comment) in enumerate(wishes, 1):
                 text += f"{i}. [Ссылка]({link})"
                 if comment:
                     text += f" — _{comment}_"
@@ -233,7 +222,7 @@ async def handle_callback(callback: types.CallbackQuery):
         conn = sqlite3.connect('wishes.db')
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, link, comment FROM wishes WHERE user_id = ? ORDER BY date DESC",
+            "SELECT link, comment FROM wishes WHERE user_id = ? ORDER BY date DESC",
             (HER_ID,)
         )
         wishes = cur.fetchall()
@@ -243,7 +232,7 @@ async def handle_callback(callback: types.CallbackQuery):
             await callback.message.answer("💖 У Солнце пока нет хотелок.")
         else:
             text = "💖 *Хотелки Солнце:*\n\n"
-            for i, (wish_id, link, comment) in enumerate(wishes, 1):
+            for i, (link, comment) in enumerate(wishes, 1):
                 text += f"{i}. [Ссылка]({link})"
                 if comment:
                     text += f" — _{comment}_"
@@ -257,34 +246,19 @@ async def handle_callback(callback: types.CallbackQuery):
         await callback.message.answer("📎 Отправь ссылку на товар в этот чат!")
         await callback.answer()
 
-# Обработка обычных сообщений (сохранение ссылок + удаление через пересылку)
+# Обработка обычных сообщений
 @dp.message()
 async def handle_message(message: types.Message):
-    user_id = message.from_user.id
-    
-    # Проверка на удаление через пересылку
-    if message.reply_to_message and message.text and "/del" in message.text:
-        original_msg = message.reply_to_message
-        
-        # Ищем ссылку в оригинальном сообщении
-        if original_msg.text and "http" in original_msg.text:
-            link_match = re.search(r'(https?://[^\s]+)', original_msg.text)
-            if link_match:
-                link = link_match.group(1)
-                await delete_wish_by_link(user_id, link, message)
-                return
-    
-    # Обычное сохранение ссылок
     if not message.text:
         return
         
     text = message.text
     
-    # Если команда /del уже обработана выше, пропускаем
     if text.startswith("/del"):
         return
     
     if "http" in text or "ozon" in text.lower() or "wildberries" in text.lower() or "wb" in text.lower():
+        user_id = message.from_user.id
         username = message.from_user.full_name
         
         words = text.split()
@@ -304,7 +278,6 @@ async def handle_message(message: types.Message):
             conn = sqlite3.connect('wishes.db')
             cur = conn.cursor()
             
-            # Проверяем, нет ли уже такой ссылки у пользователя
             cur.execute(
                 "SELECT id FROM wishes WHERE user_id = ? AND link = ?",
                 (user_id, link)
@@ -312,7 +285,7 @@ async def handle_message(message: types.Message):
             existing = cur.fetchone()
             
             if existing:
-                await message.reply("⚠️ Эта ссылка уже есть в твоих хотелках!")
+                await message.reply("⚠️ Эта ссылка уже есть в хотелках!")
             else:
                 cur.execute(
                     "INSERT INTO wishes (user_id, username, link, comment, date) VALUES (?, ?, ?, ?, ?)",
@@ -331,15 +304,25 @@ async def handle_message(message: types.Message):
             
             conn.close()
 
-# Автоматический пинг
-async def keep_alive():
-    while True:
-        await asyncio.sleep(600)
-        logging.info("Бот активен, пинг...")
+# Веб-сервер для Render
+async def health_check(request):
+    return web.Response(text="Bot is running")
 
-# Запуск бота
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get('/', health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get('PORT', 10000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    logging.info(f"Web server started on port {port}")
+    while True:
+        await asyncio.sleep(3600)
+
+# Запуск бота и веб-сервера
 async def main():
-    asyncio.create_task(keep_alive())
+    asyncio.create_task(start_web_server())
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
