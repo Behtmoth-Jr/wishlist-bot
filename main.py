@@ -135,23 +135,20 @@ async def delete_wish_by_link(user_id, link, message):
         await message.answer("❌ Не найдена такая хотелка. Проверь ссылку.")
     
     conn.close()
-
-# Команда /kot
+# Команда /kot - всегда показывает хотелки Кота (MY_ID)
 @dp.message(Command("kot"))
-async def show_my_wishes(message: types.Message):
-    user_id = message.from_user.id
-    
+async def show_kot_wishes(message: types.Message):
     conn = sqlite3.connect('wishes.db')
     cur = conn.cursor()
     cur.execute(
         "SELECT link, comment, date FROM wishes WHERE user_id = ? ORDER BY date DESC",
-        (user_id,)
+        (MY_ID,)
     )
     wishes = cur.fetchall()
     conn.close()
     
     if not wishes:
-        await message.answer("🐱 Пока нет хотелок. Отправь ссылку в чат, чтобы добавить!")
+        await message.answer("🐱 У Кота пока нет хотелок. Отправь ссылку в чат, чтобы добавить!")
         return
     
     text = "🐱 *Хотелки Кота:*\n\n"
@@ -163,9 +160,9 @@ async def show_my_wishes(message: types.Message):
     
     await message.answer(text, parse_mode="Markdown", disable_web_page_preview=True)
 
-# Команда /sun
+# Команда /sun - всегда показывает хотелки Солнце (HER_ID)
 @dp.message(Command("sun"))
-async def show_her_wishes(message: types.Message):
+async def show_sun_wishes(message: types.Message):
     conn = sqlite3.connect('wishes.db')
     cur = conn.cursor()
     cur.execute(
@@ -187,7 +184,7 @@ async def show_her_wishes(message: types.Message):
         text += f"\n   🗑 Чтобы удалить: `/del {link}`\n\n"
     
     await message.answer(text, parse_mode="Markdown", disable_web_page_preview=True)
-
+    
 # Обработка inline-кнопок
 @dp.callback_query()
 async def handle_callback(callback: types.CallbackQuery):
